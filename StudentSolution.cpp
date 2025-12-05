@@ -1,8 +1,6 @@
 #include "acequia_manager.h"
-#include <iostream>
 #include <algorithm>
 #include <vector>
-#include <utility>
 
 /*Instructions for this problem:
 
@@ -113,141 +111,102 @@ double calculateFlowRate(double deficit, double surplus, double maxFlow = 1.0) {
     return flowRate;
 }
 
-// Main adaptive water management solution - Maximum efficiency version
+// Main adaptive water management solution - balanced and deterministic
 void solveProblems(AcequiaManager& manager)
 {
     auto canals = manager.getCanals();
     auto regions = manager.getRegions();
-    
+
+    // Helper to find a region by name
+    auto findRegion = [&](const std::string& name) -> Region* {
+        for(auto r : regions){
+            if(r->name == name) return r;
+        }
+        return nullptr;
+    };
+
+    // Cache common region pointers (may be nullptr if names differ)
+    Region* north = findRegion("North");
+    Region* south = findRegion("South");
+    Region* east  = findRegion("East");
+
+    auto clampFlow = [](double amt){
+        double f = amt / 3.6;           // convert hourly amount to flowRate
+        if(f < 0.15) f = 0.15;          // minimum meaningful flow
+        if(f > 1.0)  f = 1.0;
+        return f;
+    };
+
+    // Route from source to destination if helpful
+    auto route = [&](Region* src, Region* dst){
+        if(!src || !dst) return;
+        if(src == dst) return;
+
+        // Skip if destination already satisfied
+        if(dst->waterLevel >= dst->waterNeed && !dst->isInDrought) return;
+
+        // Compute surplus at source (above need + small buffer)
+        double surplus = src->waterLevel - (src->waterNeed + 1.0);
+        if(src->isFlooded){
+            surplus = std::max(surplus, src->waterLevel - src->waterCapacity + 0.5);
+        }
+        if(src->isInDrought || surplus <= 0.0) return;
+
+        // Compute deficit at destination (need + small buffer)
+        double deficit = (dst->waterNeed + 1.0) - dst->waterLevel;
+        if(dst->isInDrought) deficit += 2.0; // push harder for drought
+        if(deficit <= 0.0) return;
+
+        // Respect destination capacity
+        double capMargin = dst->waterCapacity - dst->waterLevel - 0.5;
+        if(capMargin <= 0.0) return;
+
+        double amount = std::min({surplus, deficit, capMargin});
+        if(amount <= 0.2) return; // too small to matter
+
+        double flowRate = clampFlow(amount);
+
+        auto connecting = findCanalsByRoute(canals, src->name, dst->name);
+        for(auto canal : connecting){
+            canal->setFlowRate(flowRate);
+            canal->toggleOpen(true);
+        }
+    };
+
     while(!manager.isSolved && manager.hour != manager.SimulationMax)
     {
-        // Strategy: Maximize water flow to needy regions while preventing overflow/drought
-        // Use all available canals aggressively but intelligently
-        
-        // Close problematic canals only
-        for(auto canal : canals) {
-            if(canal->isOpen) {
-                // Close if destination is flooded and source is not
-                if(canal->destinationRegion->isFlooded && !canal->sourceRegion->isFlooded) {
-                    canal->toggleOpen(false);
-                    continue;
-                }
-                
-                // Close if source is in drought
-                if(canal->sourceRegion->isInDrought) {
-                    canal->toggleOpen(false);
-                    continue;
-                }
-                
-                // Close if source needs water much more than destination
-                double sourceDeficit = canal->sourceRegion->waterNeed - canal->sourceRegion->waterLevel;
-                double destDeficit = canal->destinationRegion->waterNeed - canal->destinationRegion->waterLevel;
-                if(sourceDeficit > destDeficit + 15.0 && 
-                   canal->sourceRegion->waterLevel < canal->sourceRegion->waterNeed - 5.0) {
-                    canal->toggleOpen(false);
-                    continue;
+        // Reset all canals each hour to avoid stale settings
+        for(auto canal : canals){
+            canal->toggleOpen(false);
+            canal->setFlowRate(0.0);
+        }
+
+        // 1) Relieve any flooded regions first
+        for(auto src : regions){
+            if(src->isFlooded || src->waterLevel >= src->waterCapacity){
+                for(auto dst : regions){
+                    if(dst == src) continue;
+                    if(dst->isFlooded) continue;
+                    route(src, dst);
                 }
             }
         }
-        
-        // Open canals for flooded regions first (highest priority)
-        for(auto region : regions) {
-            if(region->isFlooded || region->waterLevel >= region->waterCapacity) {
-                // Find all needy destinations and route to them
-                for(auto dest : regions) {
-                    if(dest == region || dest->isFlooded) continue;
-                    if(dest->waterLevel >= dest->waterNeed + 3.0) continue;
-                    
-                    auto connectingCanals = findCanalsByRoute(canals, region->name, dest->name);
-                    for(auto canal : connectingCanals) {
-                        if(!canal->isOpen) {
-                            canal->setFlowRate(1.0);
-                            canal->toggleOpen(true);
-                        }
-                    }
-                }
+
+        // 2) Use known network paths (A: N->S, B: S->E, C: N->E, D: E->N)
+        route(north, south);
+        route(south, east);
+        route(north, east);
+        route(east, north);
+
+        // 3) General balancing across all pairs (best-effort)
+        for(auto src : regions){
+            for(auto dst : regions){
+                if(src == dst) continue;
+                route(src, dst);
             }
         }
-        
-        // Now route to all regions that need water
-        for(auto needyRegion : regions) {
-            if(needyRegion->isFlooded) continue;
-            if(needyRegion->waterLevel >= needyRegion->waterNeed) continue;
-            
-            double needyDeficit = needyRegion->waterNeed - needyRegion->waterLevel;
-            bool isCritical = needyRegion->isInDrought || 
-                             needyRegion->waterLevel < 0.2 * needyRegion->waterCapacity;
-            
-            // Find all possible sources and rank them
-            std::vector<std::pair<Region*, double>> sources;
-            
-            for(auto candidate : regions) {
-                if(candidate == needyRegion) continue;
-                
-                double score = 0.0;
-                bool canSupply = false;
-                
-                // Flooded regions - highest priority
-                if(candidate->isFlooded || candidate->waterLevel >= candidate->waterCapacity) {
-                    canSupply = true;
-                    score = 100000.0;
-                }
-                // Well above need
-                else if(candidate->waterLevel > candidate->waterNeed + 8.0) {
-                    canSupply = true;
-                    score = 10000.0 + (candidate->waterLevel - candidate->waterNeed);
-                }
-                // Above need
-                else if(candidate->waterLevel > candidate->waterNeed + 3.0) {
-                    canSupply = true;
-                    score = 1000.0 + (candidate->waterLevel - candidate->waterNeed);
-                }
-                // At or just above need
-                else if(candidate->waterLevel >= candidate->waterNeed) {
-                    if(isCritical || needyDeficit > 20.0) {
-                        canSupply = true;
-                        score = 100.0 + (candidate->waterLevel - candidate->waterNeed);
-                    }
-                }
-                // For critical needs, consider regions close to need
-                else if(isCritical && needyDeficit > 25.0 &&
-                        candidate->waterLevel > candidate->waterNeed - 8.0 &&
-                        candidate->waterLevel > 0.35 * candidate->waterCapacity) {
-                    canSupply = true;
-                    score = 10.0;
-                }
-                
-                // Never use sources in drought or very low
-                if(candidate->isInDrought || candidate->waterLevel < 0.25 * candidate->waterCapacity) {
-                    canSupply = false;
-                }
-                
-                if(canSupply) {
-                    sources.push_back({candidate, score});
-                }
-            }
-            
-            // Sort sources by score (best first)
-            std::sort(sources.begin(), sources.end(),
-                      [](const std::pair<Region*, double>& a, const std::pair<Region*, double>& b) {
-                          return a.second > b.second;
-                      });
-            
-            // Open canals from best sources
-            for(auto& sourcePair : sources) {
-                auto connectingCanals = findCanalsByRoute(canals, sourcePair.first->name, needyRegion->name);
-                for(auto canal : connectingCanals) {
-                    if(!canal->isOpen) {
-                        canal->setFlowRate(1.0);
-                        canal->toggleOpen(true);
-                    }
-                }
-                // Use multiple sources if deficit is very large
-                if(needyDeficit < 20.0) break; // Only use one source for smaller deficits
-            }
-        }
-        
-        // Advance to next hour
+
+        // Advance simulation time
         manager.nexthour();
     }
 }
