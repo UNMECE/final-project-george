@@ -1,7 +1,7 @@
 [![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/nyu3LSzZ)
 # Project3
 
-Our Video Summary: https://unmm-my.sharepoint.com/personal/jpotter37_unm_edu/_layouts/15/stream.aspx?id=%2Fpersonal%2Fjpotter37_unm_edu%2FDocuments%2FAttachments%2FPresentation+Final+ECE.mp4&ct=1765374155630&or=OWA-NT-Mail&cid=c9fd629d-a3e8-a920-7372-2493f2ad13a2&ga=1&startedResponseCatch=true&referrer=StreamWebApp.Web&referrerScenario=AddressBarCopied.view.4a76f4be-ef91-466b-9c33-d3349f5cdc71
+George worked on most of the coding, and Jacob worked on the video presentation. Our Video Summary: https://unmm-my.sharepoint.com/personal/jpotter37_unm_edu/_layouts/15/stream.aspx?id=%2Fpersonal%2Fjpotter37_unm_edu%2FDocuments%2FAttachments%2FPresentation+Final+ECE.mp4&ct=1765374155630&or=OWA-NT-Mail&cid=c9fd629d-a3e8-a920-7372-2493f2ad13a2&ga=1&startedResponseCatch=true&referrer=StreamWebApp.Web&referrerScenario=AddressBarCopied.view.4a76f4be-ef91-466b-9c33-d3349f5cdc71
 
 Acequia Manager Guide
 
